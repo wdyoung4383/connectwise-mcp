@@ -105,8 +105,9 @@ Tool signatures (required unless marked optional):
    - `phone, website, address_line, city, state, zip: str | None`
    - `company_type: str | None` — type name → `types: [{"name": ...}]`
    - `status: str | None` — status name → `status: {"name": ...}`
-   - No site is sent: the bundled Company schema requires only
-     `identifier` + `name`; ConnectWise creates the default site itself.
+   - Auto-includes `site: {"name": "Main"}`: live POST validation requires a
+     site name even though the bundled GET schema marks only
+     `identifier` + `name` required (verified against the live API).
 5. **`create_contact`**
    - `first_name: str`
    - `last_name: str | None`

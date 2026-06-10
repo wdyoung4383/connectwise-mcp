@@ -233,7 +233,13 @@ def _company_body(
     company_type: str | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {"name": name, "identifier": identifier}
+    # Live POST validation requires a site even though the bundled GET schema
+    # marks only name+identifier required; CW names the default site "Main".
+    body: dict[str, Any] = {
+        "name": name,
+        "identifier": identifier,
+        "site": {"name": "Main"},
+    }
     if phone:
         body["phoneNumber"] = phone
     if website:

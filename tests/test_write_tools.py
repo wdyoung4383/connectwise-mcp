@@ -215,7 +215,7 @@ def test_note_body_flag_mapping():
 
 
 def test_company_body():
-    assert _company_body("Acme Inc", "ACME") == {"name": "Acme Inc", "identifier": "ACME"}
+    assert _company_body("Acme Inc", "ACME") == {"name": "Acme Inc", "identifier": "ACME", "site": {"name": "Main"}}
     full = _company_body(
         "Acme Inc",
         "ACME",
@@ -417,5 +417,5 @@ async def test_create_company_happy_path(served):
         )
     path, body = served[0]
     assert path == "/api/company/companies"
-    assert body == {"name": "Acme Inc", "identifier": "ACME", "city": "Springfield"}
+    assert body == {"name": "Acme Inc", "identifier": "ACME", "city": "Springfield", "site": {"name": "Main"}}
     assert result.data["id"] == 999
