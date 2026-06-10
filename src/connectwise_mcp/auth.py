@@ -38,10 +38,23 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 try:  # available only when running under the HTTP transport
-    from fastmcp.server.dependencies import get_http_headers
+    from fastmcp.server.dependencies import get_http_headers, get_http_request
 except Exception:  # pragma: no cover - fastmcp always present in practice
-    def get_http_headers() -> dict[str, str]:  # type: ignore
+    def get_http_headers(include_all: bool = False) -> dict[str, str]:  # type: ignore
         return {}
+
+    def get_http_request():  # type: ignore
+        # Match the real API's out-of-context behavior: raise so callers fall
+        # back to the stdio path.
+        raise RuntimeError("No active HTTP request found.")
+
+
+def _in_http_request() -> bool:
+    """True when we are serving an HTTP request (hosted), False under stdio."""
+    try:
+        return get_http_request() is not None
+    except Exception:
+        return False
 
 
 class MissingCredentials(Exception):
@@ -114,6 +127,8 @@ def _pick(
     allow_env: bool,
 ) -> str | None:
     # get_http_headers() lowercases keys; env is the local-stdio fallback.
+    # get_http_headers(include_all=True) lowercases keys; env is the local-stdio
+    # fallback.
     val = headers.get(header_name.lower())
     if val:
         return val
@@ -122,7 +137,10 @@ def _pick(
 
 def get_credentials() -> CWCredentials:
     """Resolve credentials for the current request (see module docs for order)."""
-    h = get_http_headers() or {}
+    # include_all=True so the filtered default view (which strips
+    # `authorization`, `host`, etc.) cannot hide the bearer token or make a
+    # minimal request look header-less. Keys are lowercased by fastmcp.
+    h = get_http_headers(include_all=True) or {}
 
     # 1) Bearer token against the tenant store.
     authz = h.get("authorization", "")
@@ -137,10 +155,13 @@ def get_credentials() -> CWCredentials:
             )
         # No tenant store configured: fall through to headers/env.
 
-    # Env credentials exist for local stdio only. An HTTP request always
-    # carries headers, so a non-empty dict means we are hosted: fail closed
-    # instead of serving an unauthenticated caller with the operator's keys.
-    allow_env = not h
+    # Env credentials exist for local stdio only. Gate the fallback on whether
+    # an HTTP request context exists -- NOT on whether the header dict is
+    # non-empty. fastmcp strips a fixed set of headers from the default view, so
+    # a minimal HTTP request can yield an empty dict; keying off that would let
+    # an unauthenticated caller reach the operator's keys. When hosted, fail
+    # closed instead.
+    allow_env = not _in_http_request()
 
     # 2) X-CW-* headers, 3) CW_* env.
     company = _pick(h, "X-CW-Company-Id", "CW_COMPANY_ID", allow_env=allow_env)

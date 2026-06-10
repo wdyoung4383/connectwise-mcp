@@ -25,12 +25,27 @@ Today `get_credentials()` falls through to `CW_*` env vars even for HTTP
 requests, so a hosted instance with env credentials set is an open,
 unauthenticated proxy to the PSA. Change the resolution rule:
 
-- **HTTP request context** (`get_http_headers()` returns a non-empty dict —
-  always true under the HTTP transport, never under stdio): credentials must
-  come from a bearer token (tenant store) or `X-CW-*` headers. The `CW_*`
-  env fallback is **skipped**. The MissingCredentials message must say
-  exactly why ("env credentials are ignored for HTTP requests").
-- **stdio context** (empty headers): env fallback unchanged.
+- **HTTP request context** (an active request exists —
+  `get_http_request()` returns a request rather than raising; true under the
+  HTTP transport, never under stdio): credentials must come from a bearer
+  token (tenant store) or `X-CW-*` headers. The `CW_*` env fallback is
+  **skipped**. The MissingCredentials message must say exactly why ("env
+  credentials are ignored for HTTP requests").
+- **stdio context** (no active HTTP request): env fallback unchanged.
+
+The discriminator is **request-context existence**, NOT "the header dict is
+non-empty". fastmcp's `get_http_headers()` strips a fixed set of headers
+(`host`, `content-length`, `content-type`, `connection`, `accept`,
+`authorization`, `mcp-session-id`, ...) from its default view, so a minimal
+HTTP request can yield an empty dict; gating on non-emptiness would let an
+unauthenticated caller reopen the env fallback. Gate on `_in_http_request()`
+(wraps `get_http_request()`) instead.
+
+Bearer-path fix: because `authorization` is in that strip set, the default
+filtered view never exposes the bearer token, so the tenant-store lookup
+would never fire over real HTTP traffic. `get_credentials()` therefore reads
+headers with `get_http_headers(include_all=True)` (keys stay lowercased) so
+both the bearer token and any minimal header set are visible.
 
 No escape hatch (YAGNI). Existing local stdio behavior is untouched.
 
