@@ -16,6 +16,11 @@ EXPECTED_TOOLS = {
     "find_company",
     "list_agreements",
     "recent_time_entries",
+    "create_ticket",
+    "create_time_entry",
+    "create_ticket_note",
+    "create_company",
+    "create_contact",
 }
 
 

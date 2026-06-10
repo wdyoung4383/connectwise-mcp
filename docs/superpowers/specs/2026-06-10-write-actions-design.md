@@ -105,15 +105,18 @@ Tool signatures (required unless marked optional):
    - `phone, website, address_line, city, state, zip: str | None`
    - `company_type: str | None` — type name → `types: [{"name": ...}]`
    - `status: str | None` — status name → `status: {"name": ...}`
-   - No site is sent: the bundled Company schema requires only
-     `identifier` + `name`; ConnectWise creates the default site itself.
+   - Auto-includes `site: {"name": "Main"}`: live POST validation requires a
+     site name even though the bundled GET schema marks only
+     `identifier` + `name` required (verified against the live API).
 5. **`create_contact`**
    - `first_name: str`
    - `last_name: str | None`
    - `company: str | None` — name or identifier, resolved
    - `email: str | None`, `phone: str | None` — wrapped as
-     `communicationItems` with `type {"name": "Email"|"Phone"}` and
-     `defaultFlag: true`
+     `communicationItems` with `communicationType "Email"|"Phone"`,
+     `defaultFlag: true`, and a `type: {"id": ...}` resolved at runtime from
+     `/company/communicationTypes` (CW requires type/id; type names are
+     instance-specific — both verified against the live API).
    - `title: str | None`
 
 ### 3. `server.py` and docs
