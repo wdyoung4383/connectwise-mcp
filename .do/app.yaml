@@ -1,0 +1,19 @@
+name: connectwise-mcp
+services:
+  - name: server
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: wdyoung4383/connectwise-mcp
+      branch: master
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /health
+    envs:
+      - key: CW_TENANTS
+        scope: RUN_TIME
+        type: SECRET
+        value: "REPLACE_IN_DO_CONSOLE"
