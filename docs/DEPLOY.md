@@ -142,14 +142,16 @@ In the DO console: **App Platform → your app → Runtime Logs**.
 Write attempts produce log lines on stdout in this format:
 
 ```
-WRITE ok  | company_id=acme path=/service/tickets
-WRITE fail | company_id=acme path=/service/tickets/999/notes
+WRITE ok company=acme path=/service/tickets id=42
+WRITE fail company=acme path=/company/companies status=400 detail=...
 ```
 
-`WRITE ok` = the POST was accepted by ConnectWise.
-`WRITE fail` = the POST was rejected (4xx/5xx from ConnectWise, or path not
-allowlisted). Each line includes the acting `company_id` and the target path
-so you can audit which tenant triggered which write.
+`WRITE ok` = the POST was accepted by ConnectWise (`id` is the created
+record). `WRITE fail` = the POST was rejected (`status` is ConnectWise's
+HTTP status, or `error` for network/allowlist failures; `detail` is the
+first 120 chars of the error). Each line includes the acting tenant's
+company id and the target path so you can audit which tenant triggered
+which write.
 
 ---
 

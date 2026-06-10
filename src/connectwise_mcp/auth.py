@@ -126,9 +126,8 @@ def _pick(
     *,
     allow_env: bool,
 ) -> str | None:
-    # get_http_headers() lowercases keys; env is the local-stdio fallback.
-    # get_http_headers(include_all=True) lowercases keys; env is the local-stdio
-    # fallback.
+    # get_http_headers(include_all=True) lowercases keys; env is the
+    # local-stdio fallback.
     val = headers.get(header_name.lower())
     if val:
         return val
