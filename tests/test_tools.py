@@ -63,3 +63,16 @@ def test_curated_paths_in_scope():
         "/time/entries",
     ):
         assert cat.by_path(path), f"{path} missing from catalog"
+
+
+async def test_health_route():
+    import httpx
+
+    from connectwise_mcp.server import mcp
+
+    app = mcp.http_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        r = await c.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}

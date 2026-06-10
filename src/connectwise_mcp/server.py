@@ -21,6 +21,8 @@ from __future__ import annotations
 from typing import Any
 
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from . import config, curated, curated_writes
 from .catalog import load_catalog
@@ -141,13 +143,27 @@ async def cw_get(
     )
 
 
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request) -> JSONResponse:
+    """Unauthenticated liveness probe for hosted deployments."""
+    return JSONResponse({"status": "ok"})
+
+
 curated.register(mcp)
 curated_writes.register(mcp)
 
 
 def main() -> None:
     """Run the server. Defaults to HTTP; set CW_MCP_TRANSPORT=stdio for local."""
+    import logging
     import os
+
+    # Surface audit/info logs on stdout for hosted runtime logs, but never
+    # clobber a host application's existing logging configuration.
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(name)s %(message)s"
+        )
 
     transport = os.getenv("CW_MCP_TRANSPORT", "http")
     if transport == "stdio":
