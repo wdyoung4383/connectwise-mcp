@@ -1,0 +1,16 @@
+{
+  "REPLACE-WITH-LONG-RANDOM-TOKEN": {
+    "company_id": "your_company_id",
+    "public_key": "your_public_key",
+    "private_key": "your_private_key",
+    "client_id": "your_client_id_guid",
+    "region": "na"
+  },
+  "ANOTHER-TENANT-TOKEN": {
+    "company_id": "other_company",
+    "public_key": "...",
+    "private_key": "...",
+    "client_id": "...",
+    "host": "cw.selfhosted.example.com"
+  }
+}
