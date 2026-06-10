@@ -14,6 +14,7 @@ from connectwise_mcp.curated_writes import (
     _resolve_contact,
     _resolve_member,
 )
+from connectwise_mcp.executor import ExecutionError
 
 
 def make_client(handler):
@@ -145,6 +146,28 @@ async def test_default_comm_type_id_prefers_default_flag():
     async with make_client(handler) as client:
         assert await _default_comm_type_id(client, email=True) == 1
         assert await _default_comm_type_id(client, email=False) == 2
+
+
+async def test_default_comm_type_id_http_error():
+    def handler(request):
+        return httpx.Response(403, text="no access")
+
+    async with make_client(handler) as client:
+        with pytest.raises(ExecutionError, match="403"):
+            await _default_comm_type_id(client, email=True)
+
+
+async def test_default_comm_type_id_no_matching_type():
+    def handler(request):
+        return httpx.Response(
+            200,
+            json=[{"id": 2, "description": "Phone - Direct", "emailFlag": False,
+                   "phoneFlag": True, "defaultFlag": True}],
+        )
+
+    async with make_client(handler) as client:
+        with pytest.raises(ResolutionError, match="no email communication type"):
+            await _default_comm_type_id(client, email=True)
 
 
 from connectwise_mcp.curated_writes import (  # noqa: E402

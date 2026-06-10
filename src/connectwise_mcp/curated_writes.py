@@ -160,7 +160,14 @@ async def _default_comm_type_id(client, *, email: bool) -> int:
             f"Could not list communication types ({resp.status_code}): "
             f"{resp.text[:300]}"
         )
-    types = [t for t in resp.json() if t.get(flag)]
+    try:
+        payload = resp.json()
+    except ValueError:
+        raise ExecutionError(
+            "Communication types endpoint returned non-JSON: "
+            + resp.text[:200]
+        ) from None
+    types = [t for t in payload if t.get(flag)]
     if not types:
         kind = "email" if email else "phone"
         raise ResolutionError(
