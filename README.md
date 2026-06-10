@@ -44,6 +44,22 @@ and no generic write gateway.
 ConnectWise auth = HTTP Basic `base64(companyId+publicKey : privateKey)` plus
 the required `clientId` header — both are built per request and never cached.
 
+## Self-service onboarding
+
+New users can connect without a pre-provisioned token. Connect to the gateway
+with no credentials and call `get_started` — it walks through creating a
+personal ConnectWise API key under **My Account → API Keys**. Then call
+`validate_connection` with the new keys; it probes ConnectWise live and
+returns a ready-to-paste config snippet that uses `X-CW-*` headers instead of
+a Bearer token. Successful validations automatically file a heads-up ticket in
+Will & Way's ConnectWise.
+
+Operators can cut off any company at any time by adding its company id to the
+`CW_BLOCKED_COMPANY_IDS` environment variable (comma-separated) and
+redeploying. A push to master triggers a redeploy in ~1–2 minutes, which is
+the revocation latency. See [docs/DEPLOY.md](docs/DEPLOY.md) for the full
+variable reference.
+
 ## Connect from Claude Desktop
 
 **Local (stdio), per user — simplest:** in `claude_desktop_config.json`:
