@@ -384,3 +384,38 @@ async def test_create_contact_resolves_company(served):
     assert path == "/api/company/contacts"
     assert body["company"] == {"id": 19332}
     assert body["communicationItems"][0]["value"] == "jane@safepoint.test"
+
+
+async def test_create_time_entry_happy_path_defaults_time_start(served):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "create_time_entry",
+            {"hours": 0.25, "ticket_id": 132, "notes": "quick fix"},
+        )
+    path, body = served[0]
+    assert path == "/api/time/entries"
+    assert body["chargeToId"] == 132
+    assert body["chargeToType"] == "ServiceTicket"
+    assert body["actualHours"] == 0.25
+    assert body["notes"] == "quick fix"
+    # default time_start was computed and formatted as CW ISO-Z
+    assert body["timeStart"].endswith("Z") and "T" in body["timeStart"]
+    assert result.data["id"] == 999
+
+
+async def test_create_company_happy_path(served):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "create_company",
+            {"name": "Acme Inc", "identifier": "ACME", "city": "Springfield"},
+        )
+    path, body = served[0]
+    assert path == "/api/company/companies"
+    assert body == {"name": "Acme Inc", "identifier": "ACME", "city": "Springfield"}
+    assert result.data["id"] == 999

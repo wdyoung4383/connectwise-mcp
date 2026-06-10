@@ -106,7 +106,7 @@ async def _resolve_member(client, identifier: str) -> int:
     if len(items) == 1:
         return items[0]["id"]
     raise ResolutionError(
-        f"No member with identifier {quote(identifier)}. Omit `member` to use "
+        f"No member with identifier {identifier!r}. Omit `member` to use "
         "the API member, or check the identifier."
     )
 

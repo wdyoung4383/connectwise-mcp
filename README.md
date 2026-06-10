@@ -1,7 +1,8 @@
-# ConnectWise PSA MCP Server (read-only)
+# ConnectWise PSA MCP Server
 
 A [FastMCP](https://gofastmcp.com) server that exposes **ConnectWise Manage
-(PSA)** as a read-only gateway for AI agents.
+(PSA)** as a gateway for AI agents: catalog-wide reads plus five curated
+create actions.
 
 ## Why a gateway, not 300 tools
 
@@ -20,8 +21,14 @@ would overwhelm any LLM client. Instead the OpenAPI spec is loaded as a runtime
 | `find_company` | Companies by name/identifier |
 | `list_agreements` | Finance agreements, optionally per company |
 | `recent_time_entries` | Time entries from the last N days |
+| `create_ticket` / `create_ticket_note` | Create a service ticket / add a note to one |
+| `create_time_entry` | Log time against a ticket or company |
+| `create_company` / `create_contact` | Create a company / contact |
 
-**Read-only by construction:** there is no create/update/delete code path.
+**Write scope by construction:** reads cover the whole GET catalog; writes
+are limited to five allowlisted POST paths in `writer.py` (ticket, time
+entry, ticket note, company, contact). There is no update/delete code path,
+and no generic write gateway.
 
 ## Credentials (resolved per request, in this order)
 
@@ -93,7 +100,7 @@ CW_MCP_TRANSPORT=stdio connectwise-mcp
 
 ```bash
 pytest                          # offline tests (catalog, executor, auth, tools)
-python scripts/live_smoke.py    # live read-only checks; needs CW_* env vars
+python scripts/live_smoke.py    # live read checks; needs CW_* env vars
 ```
 
 ## Changing scope
