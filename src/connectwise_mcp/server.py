@@ -1,4 +1,4 @@
-"""FastMCP server exposing ConnectWise PSA as a read-only gateway.
+"""FastMCP server exposing ConnectWise PSA as a gateway (reads + five creates).
 
 Design: rather than emit one tool per endpoint (324 GETs in scope), we expose a
 small set of gateway tools over a runtime catalog of the OpenAPI spec:
@@ -8,8 +8,9 @@ small set of gateway tools over a runtime catalog of the OpenAPI spec:
     describe_endpoint   -> see its exact params + response shape
     cw_get              -> execute any in-scope GET (with CW paging/conditions)
 
-plus a handful of curated tools (search_tickets, find_company, ...) for the
-most common asks — see curated.py.
+plus curated read tools (search_tickets, find_company, ...) and five curated
+write tools (create_ticket, create_time_entry, create_ticket_note,
+create_company, create_contact) — see curated.py / curated_writes.py.
 
 Credentials are per request: Authorization Bearer token -> tenant store
 (hosted), X-CW-* headers (custom agents), or CW_* env vars (local stdio).
@@ -21,7 +22,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import config, curated
+from . import config, curated, curated_writes
 from .catalog import load_catalog
 from .conditions import CONDITIONS_HELP
 from .curated import run_get
@@ -29,12 +30,15 @@ from .curated import run_get
 mcp = FastMCP(
     name="connectwise-psa",
     instructions=(
-        "Read-only access to ConnectWise Manage (PSA). For common asks use the "
-        "curated tools (search_tickets, get_ticket, find_company, "
-        "list_agreements, recent_time_entries). For anything else: "
+        "Access to ConnectWise Manage (PSA). Reads: use the curated tools "
+        "(search_tickets, get_ticket, find_company, list_agreements, "
+        "recent_time_entries) for common asks; for anything else use "
         "search_endpoints to find the GET endpoint, optionally "
-        "describe_endpoint for its parameters, then cw_get to fetch data. "
-        "Use the `conditions` parameter to filter (see cw_get docs for syntax)."
+        "describe_endpoint for its parameters, then cw_get to fetch data "
+        "(see cw_get docs for `conditions` filter syntax). Writes: exactly "
+        "five create actions are available — create_ticket, "
+        "create_time_entry, create_ticket_note, create_company, "
+        "create_contact. Everything else is read-only."
     ),
 )
 
@@ -138,6 +142,7 @@ async def cw_get(
 
 
 curated.register(mcp)
+curated_writes.register(mcp)
 
 
 def main() -> None:

@@ -265,3 +265,122 @@ def test_contact_body():
             "communicationType": "Phone",
         },
     ]
+
+
+import connectwise_mcp.curated_writes as cw_writes  # noqa: E402
+from connectwise_mcp.auth import CWCredentials  # noqa: E402
+
+
+@pytest.fixture
+def served(monkeypatch):
+    """Patch credentials + transport; capture POSTs. Returns the capture list."""
+    posted = []
+
+    def handler(request):
+        if request.method == "POST":
+            posted.append(
+                (request.url.path, json.loads(request.content.decode()))
+            )
+            return httpx.Response(201, json={"id": 999, "_info": {"x": 1}})
+        # resolution GETs
+        path = request.url.path
+        if path.endswith("/company/companies"):
+            return httpx.Response(
+                200,
+                json=[{"id": 19332, "identifier": "SafePointIT", "name": "SafePoint IT"}],
+            )
+        if path.endswith("/service/boards"):
+            return httpx.Response(200, json=[{"id": 27, "name": "Service Desk"}])
+        return httpx.Response(200, json=[])
+
+    monkeypatch.setattr(
+        cw_writes,
+        "get_credentials",
+        lambda: CWCredentials("co", "pub", "priv", "cid"),
+    )
+    monkeypatch.setattr(
+        cw_writes,
+        "make_client",
+        lambda creds: httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://cw.test/api"
+        ),
+    )
+    return posted
+
+
+async def test_create_ticket_tool_resolves_and_posts(served):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "create_ticket",
+            {"summary": "Printer down", "company": "SafePointIT", "board": "Service Desk"},
+        )
+    assert len(served) == 1
+    path, body = served[0]
+    assert path == "/api/service/tickets"
+    assert body == {
+        "summary": "Printer down",
+        "company": {"id": 19332},
+        "board": {"id": 27},
+    }
+    assert result.data["id"] == 999
+    assert "_info" not in result.data
+
+
+async def test_create_time_entry_requires_exactly_one_target(served):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        both = await client.call_tool(
+            "create_time_entry",
+            {"hours": 1, "ticket_id": 132, "company": "SafePointIT"},
+        )
+        neither = await client.call_tool("create_time_entry", {"hours": 1})
+    assert "exactly one" in both.data["error"]
+    assert "exactly one" in neither.data["error"]
+    assert served == []  # nothing was posted
+
+
+async def test_create_ticket_note_posts_to_parent(served):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "create_ticket_note", {"ticket_id": 132, "text": "looked at it"}
+        )
+    path, body = served[0]
+    assert path == "/api/service/tickets/132/notes"
+    assert body == {"text": "looked at it", "detailDescriptionFlag": True}
+
+
+async def test_create_company_identifier_length_check(served):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        out = await client.call_tool(
+            "create_company",
+            {"name": "X", "identifier": "THIS_IDENTIFIER_IS_WAY_TOO_LONG"},
+        )
+    assert "25" in out.data["error"]
+    assert served == []
+
+
+async def test_create_contact_resolves_company(served):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "create_contact",
+            {"first_name": "Jane", "last_name": "Doe", "company": "SafePointIT",
+             "email": "jane@safepoint.test"},
+        )
+    path, body = served[0]
+    assert path == "/api/company/contacts"
+    assert body["company"] == {"id": 19332}
+    assert body["communicationItems"][0]["value"] == "jane@safepoint.test"
