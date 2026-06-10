@@ -137,7 +137,7 @@ def _blocked_company_ids() -> frozenset[str]:
 
 
 def _check_blocked(creds: CWCredentials) -> CWCredentials:
-    if creds.company_id.lower() in _blocked_company_ids():
+    if creds.company_id.strip().lower() in _blocked_company_ids():
         raise MissingCredentials(
             f"Access for company {creds.company_id!r} is disabled. "
             "Contact Will & Way Solutions (book.willandway.solutions)."
