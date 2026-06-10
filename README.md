@@ -82,7 +82,7 @@ headers itself, so route through `mcp-remote`:
 ```
 
 Run the hosted server behind TLS (reverse proxy) — tokens and results travel in
-requests.
+requests. (App Platform terminates TLS for you when deployed per DEPLOY.md.)
 
 ## Run
 
@@ -95,6 +95,8 @@ connectwise-mcp                       # binds 127.0.0.1:8000
 # Local stdio (uses CW_* env vars)
 CW_MCP_TRANSPORT=stdio connectwise-mcp
 ```
+
+For production hosting on DigitalOcean App Platform (TLS, tenant tokens, audit logs, health checks) see [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Test
 

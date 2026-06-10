@@ -25,14 +25,16 @@ class ResolutionError(ExecutionError):
 
 
 async def _run_write(fn) -> Any:
-    """Resolve credentials, open a client, run ``fn(client)``, map errors."""
+    """Resolve credentials, open a client, run ``fn(client, actor)``, map
+    errors. ``actor`` is the tenant's ConnectWise company id, used for write
+    audit logging."""
     try:
         creds = get_credentials()
     except MissingCredentials as e:
         return {"error": str(e)}
     try:
         async with make_client(creds) as client:
-            return await fn(client)
+            return await fn(client, creds.company_id)
     except ExecutionError as e:
         return {"error": str(e)}
 
@@ -357,7 +359,7 @@ def register(mcp) -> None:
         Returns the created ticket (including its id).
         """
 
-        async def go(client):
+        async def go(client, actor):
             company_id = await _resolve_company(client, company)
             board_id = await _resolve_board(client, board)
             contact_id = (
@@ -374,7 +376,7 @@ def register(mcp) -> None:
                 status=status,
                 contact_id=contact_id,
             )
-            return await cw_post(client, "/service/tickets", body)
+            return await cw_post(client, "/service/tickets", body, actor=actor)
 
         return await _run_write(go)
 
@@ -404,7 +406,7 @@ def register(mcp) -> None:
                 "charge target."
             }
 
-        async def go(client):
+        async def go(client, actor):
             company_id = (
                 await _resolve_company(client, company) if company else None
             )
@@ -418,7 +420,7 @@ def register(mcp) -> None:
                 notes=notes,
                 billable=billable,
             )
-            return await cw_post(client, "/time/entries", body)
+            return await cw_post(client, "/time/entries", body, actor=actor)
 
         return await _run_write(go)
 
@@ -438,12 +440,13 @@ def register(mcp) -> None:
         except ValueError as e:
             return {"error": str(e)}
 
-        async def go(client):
+        async def go(client, actor):
             return await cw_post(
                 client,
                 "/service/tickets/{parentId}/notes",
                 body,
                 path_params={"parentId": ticket_id},
+                actor=actor,
             )
 
         return await _run_write(go)
@@ -472,7 +475,7 @@ def register(mcp) -> None:
                 f"{len(identifier)} chars; ConnectWise allows at most 25."
             }
 
-        async def go(client):
+        async def go(client, actor):
             body = _company_body(
                 name,
                 identifier,
@@ -485,7 +488,7 @@ def register(mcp) -> None:
                 company_type=company_type,
                 status=status,
             )
-            return await cw_post(client, "/company/companies", body)
+            return await cw_post(client, "/company/companies", body, actor=actor)
 
         return await _run_write(go)
 
@@ -505,7 +508,7 @@ def register(mcp) -> None:
         phone become the contact's default communication items.
         """
 
-        async def go(client):
+        async def go(client, actor):
             company_id = (
                 await _resolve_company(client, company) if company else None
             )
@@ -525,6 +528,6 @@ def register(mcp) -> None:
                 email_type_id=email_type_id,
                 phone_type_id=phone_type_id,
             )
-            return await cw_post(client, "/company/contacts", body)
+            return await cw_post(client, "/company/contacts", body, actor=actor)
 
         return await _run_write(go)

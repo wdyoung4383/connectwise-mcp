@@ -13,9 +13,10 @@ resolved per request, in this order:
    X-CW-Company-Id, X-CW-Public-Key, X-CW-Private-Key, X-CW-Client-Id,
    and optionally X-CW-Region / X-CW-Host.
 
-3. **CW_* environment variables** (local stdio / single-tenant):
-   CW_COMPANY_ID, CW_PUBLIC_KEY, CW_PRIVATE_KEY, CW_CLIENT_ID,
-   and optionally CW_REGION / CW_HOST.
+3. **CW_* environment variables** (local stdio ONLY — ignored whenever the
+   request arrives over HTTP, so a hosted server never falls back to the
+   operator's credentials): CW_COMPANY_ID, CW_PUBLIC_KEY, CW_PRIVATE_KEY,
+   CW_CLIENT_ID, and optionally CW_REGION / CW_HOST.
 
 Tenant store entry format (keys mirror the env names, lowercased)::
 
@@ -37,10 +38,23 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 try:  # available only when running under the HTTP transport
-    from fastmcp.server.dependencies import get_http_headers
+    from fastmcp.server.dependencies import get_http_headers, get_http_request
 except Exception:  # pragma: no cover - fastmcp always present in practice
-    def get_http_headers() -> dict[str, str]:  # type: ignore
+    def get_http_headers(include_all: bool = False) -> dict[str, str]:  # type: ignore
         return {}
+
+    def get_http_request():  # type: ignore
+        # Match the real API's out-of-context behavior: raise so callers fall
+        # back to the stdio path.
+        raise RuntimeError("No active HTTP request found.")
+
+
+def _in_http_request() -> bool:
+    """True when we are serving an HTTP request (hosted), False under stdio."""
+    try:
+        return get_http_request() is not None
+    except Exception:
+        return False
 
 
 class MissingCredentials(Exception):
@@ -105,14 +119,27 @@ def _lookup_token(token: str) -> CWCredentials | None:
 
 # ------------------------------------------------------------- resolution
 
-def _pick(headers: dict[str, str], header_name: str, env_name: str) -> str | None:
-    # get_http_headers() lowercases keys; env is the local fallback.
-    return headers.get(header_name.lower()) or os.getenv(env_name)
+def _pick(
+    headers: dict[str, str],
+    header_name: str,
+    env_name: str,
+    *,
+    allow_env: bool,
+) -> str | None:
+    # get_http_headers(include_all=True) lowercases keys; env is the
+    # local-stdio fallback.
+    val = headers.get(header_name.lower())
+    if val:
+        return val
+    return os.getenv(env_name) if allow_env else None
 
 
 def get_credentials() -> CWCredentials:
     """Resolve credentials for the current request (see module docs for order)."""
-    h = get_http_headers() or {}
+    # include_all=True so the filtered default view (which strips
+    # `authorization`, `host`, etc.) cannot hide the bearer token or make a
+    # minimal request look header-less. Keys are lowercased by fastmcp.
+    h = get_http_headers(include_all=True) or {}
 
     # 1) Bearer token against the tenant store.
     authz = h.get("authorization", "")
@@ -127,13 +154,21 @@ def get_credentials() -> CWCredentials:
             )
         # No tenant store configured: fall through to headers/env.
 
+    # Env credentials exist for local stdio only. Gate the fallback on whether
+    # an HTTP request context exists -- NOT on whether the header dict is
+    # non-empty. fastmcp strips a fixed set of headers from the default view, so
+    # a minimal HTTP request can yield an empty dict; keying off that would let
+    # an unauthenticated caller reach the operator's keys. When hosted, fail
+    # closed instead.
+    allow_env = not _in_http_request()
+
     # 2) X-CW-* headers, 3) CW_* env.
-    company = _pick(h, "X-CW-Company-Id", "CW_COMPANY_ID")
-    public = _pick(h, "X-CW-Public-Key", "CW_PUBLIC_KEY")
-    private = _pick(h, "X-CW-Private-Key", "CW_PRIVATE_KEY")
-    client_id = _pick(h, "X-CW-Client-Id", "CW_CLIENT_ID")
-    region = _pick(h, "X-CW-Region", "CW_REGION")
-    host = _pick(h, "X-CW-Host", "CW_HOST")
+    company = _pick(h, "X-CW-Company-Id", "CW_COMPANY_ID", allow_env=allow_env)
+    public = _pick(h, "X-CW-Public-Key", "CW_PUBLIC_KEY", allow_env=allow_env)
+    private = _pick(h, "X-CW-Private-Key", "CW_PRIVATE_KEY", allow_env=allow_env)
+    client_id = _pick(h, "X-CW-Client-Id", "CW_CLIENT_ID", allow_env=allow_env)
+    region = _pick(h, "X-CW-Region", "CW_REGION", allow_env=allow_env)
+    host = _pick(h, "X-CW-Host", "CW_HOST", allow_env=allow_env)
 
     missing = [
         name
@@ -146,11 +181,18 @@ def get_credentials() -> CWCredentials:
         if not val
     ]
     if missing:
+        hint = (
+            " (CW_* env credentials are ignored for HTTP requests; send an "
+            "Authorization: Bearer token or X-CW-* headers)"
+            if not allow_env
+            else ""
+        )
         raise MissingCredentials(
             "Missing ConnectWise credentials: "
             + ", ".join(missing)
             + ". Supply an Authorization: Bearer token (hosted), X-CW-* request "
             "headers (custom agents), or CW_* env vars (local stdio)."
+            + hint
         )
 
     return CWCredentials(

@@ -11,11 +11,14 @@ reached ConnectWise (connection failures) or when ConnectWise explicitly asks
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
 
 from .executor import ExecutionError, _classify_error, _fill_path, strip_info
+
+_audit = logging.getLogger("connectwise_mcp.audit")
 
 ALLOWED_POSTS = frozenset(
     {
@@ -80,19 +83,44 @@ async def cw_post(
     body: dict[str, Any],
     *,
     path_params: dict[str, Any] | None = None,
+    actor: str,
 ) -> Any:
-    """POST ``body`` to one of the allowlisted paths; return the created record."""
+    """POST ``body`` to one of the allowlisted paths; return the created record.
+
+    ``actor`` is the acting tenant's ConnectWise company id, used only for
+    the write audit log. Tokens, keys and request bodies are never logged.
+    """
     if path not in ALLOWED_POSTS:
+        _audit.info(
+            "WRITE fail company=%s path=%s status=error detail=%.120s",
+            actor, path, "path not in allowlist",
+        )
         raise ExecutionError(
             f"POST {path!r} is not allowed. This server only writes to: "
             + ", ".join(sorted(ALLOWED_POSTS))
         )
     url = _fill_path(path, path_params)
-    resp = await _post_with_retries(client, url, body)
+    try:
+        resp = await _post_with_retries(client, url, body)
+    except ExecutionError as e:
+        _audit.info(
+            "WRITE fail company=%s path=%s status=error detail=%.120s",
+            actor, path, str(e),
+        )
+        raise
     if resp.status_code >= 400:
+        _audit.info(
+            "WRITE fail company=%s path=%s status=%s detail=%.120s",
+            actor, path, resp.status_code, resp.text,
+        )
         raise ExecutionError(_classify_post_error(resp.status_code, resp.text))
     try:
         data = resp.json()
     except ValueError:
-        return {"raw": resp.text}
-    return strip_info(data)
+        data = {"raw": resp.text}
+    data = strip_info(data)
+    _audit.info(
+        "WRITE ok company=%s path=%s id=%s",
+        actor, path, data.get("id") if isinstance(data, dict) else None,
+    )
+    return data
