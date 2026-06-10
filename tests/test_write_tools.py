@@ -1,6 +1,7 @@
 """Write-tool tests: resolution helpers and body builders (no network)."""
 
 import json
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -123,3 +124,144 @@ async def test_resolve_contact_single_token_matches_either_name():
 
     async with make_client(handler) as client:
         assert await _resolve_contact(client, "Jane", 19332) == 88
+
+
+from connectwise_mcp.curated_writes import (  # noqa: E402
+    _company_body,
+    _contact_body,
+    _default_time_start,
+    _note_body,
+    _ticket_body,
+    _time_entry_body,
+)
+
+
+def test_ticket_body_minimal_and_full():
+    assert _ticket_body("Printer down", 19332, 27) == {
+        "summary": "Printer down",
+        "company": {"id": 19332},
+        "board": {"id": 27},
+    }
+    full = _ticket_body(
+        "Printer down",
+        19332,
+        27,
+        initial_description="It smokes",
+        priority="Priority 1 - Critical",
+        status="New",
+        contact_id=88,
+    )
+    assert full["initialDescription"] == "It smokes"
+    assert full["priority"] == {"name": "Priority 1 - Critical"}
+    assert full["status"] == {"name": "New"}
+    assert full["contact"] == {"id": 88}
+
+
+def test_time_entry_body_ticket_vs_company():
+    t = _time_entry_body(
+        hours=0.5,
+        time_start="2026-06-10T15:00:00Z",
+        ticket_id=132,
+        company_id=None,
+        member_id=None,
+        notes="did things",
+        billable=True,
+    )
+    assert t == {
+        "timeStart": "2026-06-10T15:00:00Z",
+        "actualHours": 0.5,
+        "chargeToId": 132,
+        "chargeToType": "ServiceTicket",
+        "notes": "did things",
+        "billableOption": "Billable",
+    }
+    c = _time_entry_body(
+        hours=2,
+        time_start="2026-06-10T15:00:00Z",
+        ticket_id=None,
+        company_id=19332,
+        member_id=150,
+        notes=None,
+        billable=False,
+    )
+    assert c["company"] == {"id": 19332}
+    assert c["chargeToType"] == "Company"
+    assert c["member"] == {"id": 150}
+    assert c["billableOption"] == "DoNotBill"
+    assert "chargeToId" not in c
+    assert "notes" not in c
+
+
+def test_default_time_start_subtracts_hours():
+    ts = _default_time_start(2.0, now=datetime(2026, 6, 10, 15, 0, tzinfo=timezone.utc))
+    assert ts == "2026-06-10T13:00:00Z"
+
+
+def test_note_body_flag_mapping():
+    assert _note_body("hello", "discussion") == {
+        "text": "hello",
+        "detailDescriptionFlag": True,
+    }
+    assert _note_body("hush", "internal") == {
+        "text": "hush",
+        "internalAnalysisFlag": True,
+    }
+    assert _note_body("fixed", "resolution") == {
+        "text": "fixed",
+        "resolutionFlag": True,
+    }
+    with pytest.raises(ValueError, match="note_type"):
+        _note_body("x", "shouting")
+
+
+def test_company_body():
+    assert _company_body("Acme Inc", "ACME") == {"name": "Acme Inc", "identifier": "ACME"}
+    full = _company_body(
+        "Acme Inc",
+        "ACME",
+        phone="555-0100",
+        website="https://acme.test",
+        address_line="1 Main St",
+        city="Springfield",
+        state="IL",
+        zip_code="62701",
+        company_type="Prospect",
+        status="Active",
+    )
+    assert full["phoneNumber"] == "555-0100"
+    assert full["website"] == "https://acme.test"
+    assert full["addressLine1"] == "1 Main St"
+    assert full["city"] == "Springfield"
+    assert full["state"] == "IL"
+    assert full["zip"] == "62701"
+    assert full["types"] == [{"name": "Prospect"}]
+    assert full["status"] == {"name": "Active"}
+
+
+def test_contact_body():
+    assert _contact_body("Jane") == {"firstName": "Jane"}
+    full = _contact_body(
+        "Jane",
+        last_name="Doe",
+        company_id=19332,
+        email="jane@acme.test",
+        phone="555-0101",
+        title="CTO",
+    )
+    assert full["lastName"] == "Doe"
+    assert full["company"] == {"id": 19332}
+    assert full["title"] == "CTO"
+    assert full["communicationItems"] == [
+        {
+            "type": {"name": "Email"},
+            "value": "jane@acme.test",
+            "defaultFlag": True,
+            "communicationType": "Email",
+        },
+        {
+            "type": {"name": "Phone"},
+            "value": "555-0101",
+            "defaultFlag": True,
+            "communicationType": "Phone",
+        },
+    ]

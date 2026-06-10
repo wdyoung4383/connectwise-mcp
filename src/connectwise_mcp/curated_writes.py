@@ -143,3 +143,150 @@ async def _resolve_contact(client, name: str, company_id: int) -> int:
             f"Ambiguous contact {name!r} — candidates: {cands}."
         )
     return items[0]["id"]
+
+
+# ------------------------------------------------------------- body builders
+
+_NOTE_FLAGS = {
+    "discussion": "detailDescriptionFlag",
+    "internal": "internalAnalysisFlag",
+    "resolution": "resolutionFlag",
+}
+
+
+def _ticket_body(
+    summary: str,
+    company_id: int,
+    board_id: int,
+    initial_description: str | None = None,
+    priority: str | None = None,
+    status: str | None = None,
+    contact_id: int | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "summary": summary,
+        "company": {"id": company_id},
+        "board": {"id": board_id},
+    }
+    if initial_description:
+        body["initialDescription"] = initial_description
+    if priority:
+        body["priority"] = {"name": priority}
+    if status:
+        body["status"] = {"name": status}
+    if contact_id is not None:
+        body["contact"] = {"id": contact_id}
+    return body
+
+
+def _default_time_start(hours: float, now: datetime | None = None) -> str:
+    dt = (now or datetime.now(timezone.utc)) - timedelta(hours=hours)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _time_entry_body(
+    *,
+    hours: float,
+    time_start: str,
+    ticket_id: int | None,
+    company_id: int | None,
+    member_id: int | None,
+    notes: str | None,
+    billable: bool | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"timeStart": time_start, "actualHours": hours}
+    if ticket_id is not None:
+        body["chargeToId"] = ticket_id
+        body["chargeToType"] = "ServiceTicket"
+    else:
+        body["company"] = {"id": company_id}
+        body["chargeToType"] = "Company"
+    if member_id is not None:
+        body["member"] = {"id": member_id}
+    if notes:
+        body["notes"] = notes
+    if billable is not None:
+        body["billableOption"] = "Billable" if billable else "DoNotBill"
+    return body
+
+
+def _note_body(text: str, note_type: str) -> dict[str, Any]:
+    flag = _NOTE_FLAGS.get(note_type)
+    if flag is None:
+        raise ValueError(
+            f"note_type must be one of {sorted(_NOTE_FLAGS)}, got {note_type!r}"
+        )
+    return {"text": text, flag: True}
+
+
+def _company_body(
+    name: str,
+    identifier: str,
+    *,
+    phone: str | None = None,
+    website: str | None = None,
+    address_line: str | None = None,
+    city: str | None = None,
+    state: str | None = None,
+    zip_code: str | None = None,
+    company_type: str | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"name": name, "identifier": identifier}
+    if phone:
+        body["phoneNumber"] = phone
+    if website:
+        body["website"] = website
+    if address_line:
+        body["addressLine1"] = address_line
+    if city:
+        body["city"] = city
+    if state:
+        body["state"] = state
+    if zip_code:
+        body["zip"] = zip_code
+    if company_type:
+        body["types"] = [{"name": company_type}]
+    if status:
+        body["status"] = {"name": status}
+    return body
+
+
+def _contact_body(
+    first_name: str,
+    *,
+    last_name: str | None = None,
+    company_id: int | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    title: str | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"firstName": first_name}
+    if last_name:
+        body["lastName"] = last_name
+    if company_id is not None:
+        body["company"] = {"id": company_id}
+    if title:
+        body["title"] = title
+    comm: list[dict[str, Any]] = []
+    if email:
+        comm.append(
+            {
+                "type": {"name": "Email"},
+                "value": email,
+                "defaultFlag": True,
+                "communicationType": "Email",
+            }
+        )
+    if phone:
+        comm.append(
+            {
+                "type": {"name": "Phone"},
+                "value": phone,
+                "defaultFlag": True,
+                "communicationType": "Phone",
+            }
+        )
+    if comm:
+        body["communicationItems"] = comm
+    return body
