@@ -113,9 +113,10 @@ Tool signatures (required unless marked optional):
    - `last_name: str | None`
    - `company: str | None` — name or identifier, resolved
    - `email: str | None`, `phone: str | None` — wrapped as
-     `communicationItems` with `communicationType "Email"|"Phone"` and
-     `defaultFlag: true` (no `type` name reference — those are
-     instance-specific; verified against the live API)
+     `communicationItems` with `communicationType "Email"|"Phone"`,
+     `defaultFlag: true`, and a `type: {"id": ...}` resolved at runtime from
+     `/company/communicationTypes` (CW requires type/id; type names are
+     instance-specific — both verified against the live API).
    - `title: str | None`
 
 ### 3. `server.py` and docs

@@ -145,6 +145,32 @@ async def _resolve_contact(client, name: str, company_id: int) -> int:
     return items[0]["id"]
 
 
+async def _default_comm_type_id(client, *, email: bool) -> int:
+    """Id of the instance's default communication type for email or phone.
+
+    Contact ``communicationItems`` require a ``type/id`` and the type NAMES
+    are instance-specific, so we look the id up at runtime. This endpoint is
+    not in the bundled GET catalog (it exists solely for this internal
+    lookup), hence the direct client.get instead of cw_get.
+    """
+    flag = "emailFlag" if email else "phoneFlag"
+    resp = await client.get("/company/communicationTypes", params={"pageSize": 100})
+    if resp.status_code >= 400:
+        raise ExecutionError(
+            f"Could not list communication types ({resp.status_code}): "
+            f"{resp.text[:300]}"
+        )
+    types = [t for t in resp.json() if t.get(flag)]
+    if not types:
+        kind = "email" if email else "phone"
+        raise ResolutionError(
+            f"This ConnectWise instance has no {kind} communication type; "
+            "create the contact without that field."
+        )
+    defaults = [t for t in types if t.get("defaultFlag")]
+    return (defaults or types)[0]["id"]
+
+
 # ------------------------------------------------------------- body builders
 
 _NOTE_FLAGS = {
@@ -267,6 +293,8 @@ def _contact_body(
     email: str | None = None,
     phone: str | None = None,
     title: str | None = None,
+    email_type_id: int | None = None,
+    phone_type_id: int | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"firstName": first_name}
     if last_name:
@@ -276,16 +304,23 @@ def _contact_body(
     if title:
         body["title"] = title
     comm: list[dict[str, Any]] = []
-    # `communicationType` is the portable category enum; a `type` name
-    # reference is instance-specific (e.g. "Email - Work") so we omit it and
-    # let CW assign the instance's default type for the category.
     if email:
         comm.append(
-            {"value": email, "defaultFlag": True, "communicationType": "Email"}
+            {
+                "type": {"id": email_type_id},
+                "value": email,
+                "defaultFlag": True,
+                "communicationType": "Email",
+            }
         )
     if phone:
         comm.append(
-            {"value": phone, "defaultFlag": True, "communicationType": "Phone"}
+            {
+                "type": {"id": phone_type_id},
+                "value": phone,
+                "defaultFlag": True,
+                "communicationType": "Phone",
+            }
         )
     if comm:
         body["communicationItems"] = comm
@@ -467,6 +502,12 @@ def register(mcp) -> None:
             company_id = (
                 await _resolve_company(client, company) if company else None
             )
+            email_type_id = (
+                await _default_comm_type_id(client, email=True) if email else None
+            )
+            phone_type_id = (
+                await _default_comm_type_id(client, email=False) if phone else None
+            )
             body = _contact_body(
                 first_name,
                 last_name=last_name,
@@ -474,6 +515,8 @@ def register(mcp) -> None:
                 email=email,
                 phone=phone,
                 title=title,
+                email_type_id=email_type_id,
+                phone_type_id=phone_type_id,
             )
             return await cw_post(client, "/company/contacts", body)
 

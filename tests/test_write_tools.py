@@ -8,6 +8,7 @@ import pytest
 
 from connectwise_mcp.curated_writes import (
     ResolutionError,
+    _default_comm_type_id,
     _resolve_board,
     _resolve_company,
     _resolve_contact,
@@ -124,6 +125,26 @@ async def test_resolve_contact_single_token_matches_either_name():
 
     async with make_client(handler) as client:
         assert await _resolve_contact(client, "Jane", 19332) == 88
+
+
+async def test_default_comm_type_id_prefers_default_flag():
+    def handler(request):
+        assert request.url.path.endswith("/company/communicationTypes")
+        return httpx.Response(
+            200,
+            json=[
+                {"id": 9, "description": "Email - Other", "emailFlag": True,
+                 "phoneFlag": False, "defaultFlag": False},
+                {"id": 1, "description": "Email - Work", "emailFlag": True,
+                 "phoneFlag": False, "defaultFlag": True},
+                {"id": 2, "description": "Phone - Direct", "emailFlag": False,
+                 "phoneFlag": True, "defaultFlag": True},
+            ],
+        )
+
+    async with make_client(handler) as client:
+        assert await _default_comm_type_id(client, email=True) == 1
+        assert await _default_comm_type_id(client, email=False) == 2
 
 
 from connectwise_mcp.curated_writes import (  # noqa: E402
@@ -247,13 +268,17 @@ def test_contact_body():
         email="jane@acme.test",
         phone="555-0101",
         title="CTO",
+        email_type_id=1,
+        phone_type_id=2,
     )
     assert full["lastName"] == "Doe"
     assert full["company"] == {"id": 19332}
     assert full["title"] == "CTO"
     assert full["communicationItems"] == [
-        {"value": "jane@acme.test", "defaultFlag": True, "communicationType": "Email"},
-        {"value": "555-0101", "defaultFlag": True, "communicationType": "Phone"},
+        {"type": {"id": 1}, "value": "jane@acme.test", "defaultFlag": True,
+         "communicationType": "Email"},
+        {"type": {"id": 2}, "value": "555-0101", "defaultFlag": True,
+         "communicationType": "Phone"},
     ]
 
 
@@ -281,6 +306,16 @@ def served(monkeypatch):
             )
         if path.endswith("/service/boards"):
             return httpx.Response(200, json=[{"id": 27, "name": "Service Desk"}])
+        if path.endswith("/company/communicationTypes"):
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "description": "Email - Work", "emailFlag": True,
+                     "phoneFlag": False, "defaultFlag": True},
+                    {"id": 2, "description": "Phone - Direct", "emailFlag": False,
+                     "phoneFlag": True, "defaultFlag": True},
+                ],
+            )
         return httpx.Response(200, json=[])
 
     monkeypatch.setattr(
@@ -374,6 +409,7 @@ async def test_create_contact_resolves_company(served):
     assert path == "/api/company/contacts"
     assert body["company"] == {"id": 19332}
     assert body["communicationItems"][0]["value"] == "jane@safepoint.test"
+    assert body["communicationItems"][0]["type"] == {"id": 1}
 
 
 async def test_create_time_entry_happy_path_defaults_time_start(served):
