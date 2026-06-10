@@ -118,6 +118,21 @@ async def test_retry_on_connect_error_then_success():
     assert out == {"id": 3}
 
 
+async def test_retry_on_connect_timeout_then_success():
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ConnectTimeout("slow connect", request=request)
+        return httpx.Response(201, json={"id": 4})
+
+    async with make_client(handler) as client:
+        out = await cw_post(client, "/service/tickets", {"summary": "s"})
+    assert calls["n"] == 2
+    assert out == {"id": 4}
+
+
 async def test_no_retry_on_read_timeout():
     calls = {"n": 0}
 

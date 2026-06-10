@@ -46,7 +46,7 @@ async def _post_with_retries(
     for attempt in range(_MAX_RETRIES + 1):
         try:
             resp = await client.post(url, json=body)
-        except httpx.ConnectError as e:
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             # Connection never established: the request did not reach CW,
             # so retrying cannot double-create.
             last_exc = e
