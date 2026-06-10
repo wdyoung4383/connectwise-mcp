@@ -110,3 +110,57 @@ def test_x_cw_headers(monkeypatch):
     )
     c = get_credentials()
     assert c.region == "au"
+
+
+def test_env_fallback_ignored_for_http_requests(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID", "acme")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "pub")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "priv")
+    monkeypatch.setenv("CW_CLIENT_ID", "guid-123")
+    # any HTTP request carries headers (e.g. host) -> hosted context
+    monkeypatch.setattr(auth, "get_http_headers", lambda: {"host": "x"})
+    with pytest.raises(MissingCredentials, match="ignored for HTTP"):
+        get_credentials()
+
+
+def test_x_cw_headers_resolve_even_with_env_set(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID", "operator")
+    monkeypatch.setattr(
+        auth,
+        "get_http_headers",
+        lambda: {
+            "x-cw-company-id": "acme",
+            "x-cw-public-key": "pub",
+            "x-cw-private-key": "priv",
+            "x-cw-client-id": "guid-123",
+        },
+    )
+    assert get_credentials().company_id == "acme"
+
+
+def test_partial_x_cw_headers_do_not_borrow_env(monkeypatch):
+    # missing private key must NOT be silently filled from the operator env
+    monkeypatch.setenv("CW_PRIVATE_KEY", "operator-secret")
+    monkeypatch.setattr(
+        auth,
+        "get_http_headers",
+        lambda: {
+            "x-cw-company-id": "acme",
+            "x-cw-public-key": "pub",
+            "x-cw-client-id": "guid-123",
+        },
+    )
+    with pytest.raises(MissingCredentials, match="private_key"):
+        get_credentials()
+
+
+def test_bearer_without_tenant_store_does_not_fall_to_env(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID", "acme")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "pub")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "priv")
+    monkeypatch.setenv("CW_CLIENT_ID", "guid-123")
+    monkeypatch.setattr(
+        auth, "get_http_headers", lambda: {"authorization": "Bearer tok"}
+    )
+    with pytest.raises(MissingCredentials, match="ignored for HTTP"):
+        get_credentials()
