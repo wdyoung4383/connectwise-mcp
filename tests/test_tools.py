@@ -21,6 +21,8 @@ EXPECTED_TOOLS = {
     "create_ticket_note",
     "create_company",
     "create_contact",
+    "get_started",
+    "validate_connection",
 }
 
 

@@ -118,3 +118,77 @@ async def test_no_private_key_in_logs(monkeypatch, caplog):
         await _validate("acme", "pub", "SECRETPRIV", "na")
     for record in caplog.records:
         assert "SECRETPRIV" not in record.getMessage()
+
+
+async def test_notification_created_on_success(monkeypatch):
+    posted = []
+
+    def handler(request):
+        if request.method == "POST":
+            posted.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 555})
+        path = request.url.path
+        if path.endswith("/company/companies"):
+            return httpx.Response(200, json=[{"id": 42}])
+        if path.endswith("/service/boards"):
+            return httpx.Response(200, json=[{"id": 27}])
+        return httpx.Response(200, json=[{"id": 1}])
+
+    monkeypatch.setenv("CW_TENANTS", json.dumps({
+        "notify-tok": {"company_id": "willandway", "public_key": "p",
+                        "private_key": "s", "client_id": "c", "region": "na"}
+    }))
+    monkeypatch.setenv("CW_NOTIFY_TENANT", "notify-tok")
+    monkeypatch.setenv("CW_NOTIFY_COMPANY", "WillAndWay")
+    monkeypatch.setenv("CW_NOTIFY_BOARD", "Service Desk")
+    from connectwise_mcp.auth import _load_tenants
+    _load_tenants.cache_clear()
+
+    monkeypatch.setattr(
+        onboarding, "make_client", lambda creds: make_client(handler)
+    )
+    out = await _validate("newclient", "pub", "priv", "na")
+    assert out["connected"] is True
+    assert len(posted) == 1
+    assert posted[0]["summary"] == "New Claude connector onboarding: newclient"
+    assert "priv" not in json.dumps(posted[0])
+    _load_tenants.cache_clear()
+
+
+async def test_notification_failure_does_not_break_onboarding(monkeypatch):
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(500, text="boom")
+        return httpx.Response(200, json=[{"id": 1}])
+
+    monkeypatch.setenv("CW_TENANTS", json.dumps({
+        "notify-tok": {"company_id": "willandway", "public_key": "p",
+                        "private_key": "s", "client_id": "c", "region": "na"}
+    }))
+    monkeypatch.setenv("CW_NOTIFY_TENANT", "notify-tok")
+    monkeypatch.setenv("CW_NOTIFY_COMPANY", "WillAndWay")
+    from connectwise_mcp.auth import _load_tenants
+    _load_tenants.cache_clear()
+
+    monkeypatch.setattr(
+        onboarding, "make_client", lambda creds: make_client(handler)
+    )
+    out = await _validate("newclient", "pub", "priv", "na")
+    assert out["connected"] is True
+    _load_tenants.cache_clear()
+
+
+async def test_notification_skipped_when_unconfigured(monkeypatch):
+    calls = {"posts": 0}
+
+    def handler(request):
+        if request.method == "POST":
+            calls["posts"] += 1
+        return httpx.Response(200, json=[{"id": 1}])
+
+    monkeypatch.setattr(
+        onboarding, "make_client", lambda creds: make_client(handler)
+    )
+    out = await _validate("newclient", "pub", "priv", "na")
+    assert out["connected"] is True
+    assert calls["posts"] == 0

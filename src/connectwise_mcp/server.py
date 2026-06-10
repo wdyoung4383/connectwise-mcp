@@ -24,7 +24,7 @@ from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from . import config, curated, curated_writes
+from . import config, curated, curated_writes, onboarding
 from .catalog import load_catalog
 from .conditions import CONDITIONS_HELP
 from .curated import run_get
@@ -41,6 +41,8 @@ mcp = FastMCP(
         "five create actions are available — create_ticket, "
         "create_time_entry, create_ticket_note, create_company, "
         "create_contact. Everything else is read-only."
+        " Not connected yet? The get_started tool walks new users through"
+        " creating a ConnectWise API key and connecting."
     ),
 )
 
@@ -151,6 +153,7 @@ async def health(request: Request) -> JSONResponse:
 
 curated.register(mcp)
 curated_writes.register(mcp)
+onboarding.register(mcp)
 
 
 def main() -> None:
