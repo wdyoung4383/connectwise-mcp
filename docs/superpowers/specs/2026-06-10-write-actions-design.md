@@ -82,8 +82,9 @@ Tool signatures (required unless marked optional):
 2. **`create_time_entry`**
    - Exactly one of `ticket_id: int | None` (→ `chargeToId` +
      `chargeToType: "ServiceTicket"`) or `company: str | None`
-     (→ `company: {"id": ...}`, `chargeToType: "CompanyManagement"`);
-     supplying both or neither is an error.
+     (→ `company: {"id": ...}`, `chargeToType: "Company"` — enum value
+     verified against the bundled TimeEntry schema); supplying both or
+     neither is an error.
    - `hours: float` — `actualHours`
    - `notes: str | None`
    - `time_start: str | None` — ISO 8601 UTC; default: now minus `hours`,
@@ -104,7 +105,8 @@ Tool signatures (required unless marked optional):
    - `phone, website, address_line, city, state, zip: str | None`
    - `company_type: str | None` — type name → `types: [{"name": ...}]`
    - `status: str | None` — status name → `status: {"name": ...}`
-   - Auto-includes `site: {"name": "Main"}` (CW requires a site)
+   - No site is sent: the bundled Company schema requires only
+     `identifier` + `name`; ConnectWise creates the default site itself.
 5. **`create_contact`**
    - `first_name: str`
    - `last_name: str | None`
