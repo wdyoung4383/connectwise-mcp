@@ -155,7 +155,37 @@ which write.
 
 ---
 
-## 9. Security model
+## 9. Self-service onboarding & the kill switch
+
+New users do not need a pre-provisioned Bearer token. They connect to the
+gateway with no credentials and call two tools:
+
+1. `get_started` — returns a step-by-step walkthrough for creating a personal
+   ConnectWise API key under **My Account → API Keys**. No credentials
+   required.
+2. `validate_connection` — takes the new keys, probes ConnectWise live, and
+   returns a ready-to-paste `claude_desktop_config.json` snippet using
+   `X-CW-*` headers. On success, a heads-up ticket is filed automatically.
+
+### Environment variables
+
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `CW_DEFAULT_CLIENT_ID` | SECRET | Your ConnectWise integration `clientId`. Used for every self-service validation — self-service clients do not register their own. |
+| `CW_BLOCKED_COMPANY_IDS` | plain | Comma-separated list of company ids that are denied access. Editing this value and redeploying is the revocation mechanism — a push triggers a redeploy in approximately 1–2 minutes, which is the revocation latency. Leave blank to allow all companies. |
+| `CW_NOTIFY_TENANT` | SECRET | A Bearer token that **must exist as a key in `CW_TENANTS`**. The credentials behind that token are used to file the onboarding heads-up ticket. Leave blank to disable notifications. |
+| `CW_NOTIFY_COMPANY` | plain | The `identifier` of the company in your ConnectWise instance the heads-up ticket is filed against. |
+| `CW_NOTIFY_BOARD` | plain | The service board name the heads-up ticket is filed on (default: `Service Desk`). |
+
+Set `CW_DEFAULT_CLIENT_ID` and `CW_NOTIFY_TENANT` in the DO console the same
+way you set `CW_TENANTS` (Settings → server component → Environment
+Variables). `CW_BLOCKED_COMPANY_IDS`, `CW_NOTIFY_COMPANY`, and
+`CW_NOTIFY_BOARD` can be plain values set in the console or updated in
+`.do/app.yaml` — each edit triggers an automatic redeploy.
+
+---
+
+## 10. Security model
 
 | Layer | Detail |
 |-------|--------|

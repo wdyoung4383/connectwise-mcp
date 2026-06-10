@@ -32,6 +32,8 @@ def clean_env(monkeypatch):
         "CW_CLIENT_ID",
         "CW_REGION",
         "CW_HOST",
+        "CW_BLOCKED_COMPANY_IDS",
+        "CW_DEFAULT_CLIENT_ID",
     ):
         monkeypatch.delenv(var, raising=False)
     _load_tenants.cache_clear()
@@ -206,3 +208,89 @@ def test_fastmcp_default_view_strips_authorization():
     # include_all=True empties the exclude set (returns all headers).
     assert "if include_all:" in src
     assert "exclude_headers: set[str] = set()" in src
+
+
+def _set_stdio_env(monkeypatch, company="acme"):
+    monkeypatch.setenv("CW_COMPANY_ID", company)
+    monkeypatch.setenv("CW_PUBLIC_KEY", "pub")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "priv")
+    monkeypatch.setenv("CW_CLIENT_ID", "guid-123")
+
+
+def test_blocklist_blocks_stdio_env_path(monkeypatch):
+    _set_stdio_env(monkeypatch)
+    monkeypatch.setenv("CW_BLOCKED_COMPANY_IDS", "other, ACME ,third")
+    with pytest.raises(MissingCredentials, match="disabled"):
+        get_credentials()
+
+
+def test_blocklist_blocks_header_path(monkeypatch):
+    monkeypatch.setenv("CW_BLOCKED_COMPANY_IDS", "acme")
+    monkeypatch.setattr(auth, "get_http_request", lambda: object())
+    monkeypatch.setattr(
+        auth,
+        "get_http_headers",
+        lambda **kw: {
+            "x-cw-company-id": "Acme",
+            "x-cw-public-key": "pub",
+            "x-cw-private-key": "priv",
+            "x-cw-client-id": "guid-123",
+        },
+    )
+    with pytest.raises(MissingCredentials, match="disabled"):
+        get_credentials()
+
+
+def test_blocklist_blocks_bearer_path(monkeypatch):
+    monkeypatch.setenv("CW_TENANTS", json.dumps({"tok-abc": CREDS}))
+    monkeypatch.setenv("CW_BLOCKED_COMPANY_IDS", "acme")
+    monkeypatch.setattr(auth, "get_http_request", lambda: object())
+    monkeypatch.setattr(
+        auth, "get_http_headers", lambda **kw: {"authorization": "Bearer tok-abc"}
+    )
+    with pytest.raises(MissingCredentials, match="disabled"):
+        get_credentials()
+
+
+def test_blocklist_empty_or_unset_blocks_nothing(monkeypatch):
+    _set_stdio_env(monkeypatch)
+    monkeypatch.setenv("CW_BLOCKED_COMPANY_IDS", "  ,  ")
+    assert get_credentials().company_id == "acme"
+    monkeypatch.delenv("CW_BLOCKED_COMPANY_IDS")
+    assert get_credentials().company_id == "acme"
+
+
+def test_default_client_id_fills_gap_under_http(monkeypatch):
+    monkeypatch.setenv("CW_DEFAULT_CLIENT_ID", "ww-client-guid")
+    monkeypatch.setattr(auth, "get_http_request", lambda: object())
+    monkeypatch.setattr(
+        auth,
+        "get_http_headers",
+        lambda **kw: {
+            "x-cw-company-id": "acme",
+            "x-cw-public-key": "pub",
+            "x-cw-private-key": "priv",
+        },
+    )
+    assert get_credentials().client_id == "ww-client-guid"
+
+
+def test_header_client_id_wins_over_default(monkeypatch):
+    monkeypatch.setenv("CW_DEFAULT_CLIENT_ID", "ww-client-guid")
+    monkeypatch.setattr(auth, "get_http_request", lambda: object())
+    monkeypatch.setattr(
+        auth,
+        "get_http_headers",
+        lambda **kw: {
+            "x-cw-company-id": "acme",
+            "x-cw-public-key": "pub",
+            "x-cw-private-key": "priv",
+            "x-cw-client-id": "their-guid",
+        },
+    )
+    assert get_credentials().client_id == "their-guid"
+
+
+def test_missing_creds_message_mentions_get_started():
+    with pytest.raises(MissingCredentials, match="get_started"):
+        get_credentials()

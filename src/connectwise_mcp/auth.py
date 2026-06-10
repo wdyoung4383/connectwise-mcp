@@ -18,6 +18,14 @@ resolved per request, in this order:
    operator's credentials): CW_COMPANY_ID, CW_PUBLIC_KEY, CW_PRIVATE_KEY,
    CW_CLIENT_ID, and optionally CW_REGION / CW_HOST.
 
+**Blocklist**: ``CW_BLOCKED_COMPANY_IDS`` (comma-separated, case-insensitive)
+is enforced on every successful credential resolution path as a kill switch.
+
+**Default clientId**: ``CW_DEFAULT_CLIENT_ID`` is a server-level fallback for
+the clientId field — applied when no clientId arrived via tenant entry, header,
+or stdio env. It is always read (even under HTTP) because a clientId is
+integration identity, not an access credential.
+
 Tenant store entry format (keys mirror the env names, lowercased)::
 
     {
@@ -117,6 +125,26 @@ def _lookup_token(token: str) -> CWCredentials | None:
     return None
 
 
+# ----------------------------------------------------------- blocklist
+
+def _blocked_company_ids() -> frozenset[str]:
+    """Company ids denied access (kill switch). Read fresh per call so a
+    redeploy with a new CW_BLOCKED_COMPANY_IDS takes effect immediately."""
+    raw = os.getenv("CW_BLOCKED_COMPANY_IDS", "")
+    return frozenset(
+        part.strip().lower() for part in raw.split(",") if part.strip()
+    )
+
+
+def _check_blocked(creds: CWCredentials) -> CWCredentials:
+    if creds.company_id.strip().lower() in _blocked_company_ids():
+        raise MissingCredentials(
+            f"Access for company {creds.company_id!r} is disabled. "
+            "Contact Will & Way Solutions (book.willandway.solutions)."
+        )
+    return creds
+
+
 # ------------------------------------------------------------- resolution
 
 def _pick(
@@ -147,7 +175,7 @@ def get_credentials() -> CWCredentials:
         token = authz[7:].strip()
         creds = _lookup_token(token)
         if creds:
-            return creds
+            return _check_blocked(creds)
         if _load_tenants():
             raise MissingCredentials(
                 "Bearer token not recognized by this server's tenant store."
@@ -169,6 +197,13 @@ def get_credentials() -> CWCredentials:
     client_id = _pick(h, "X-CW-Client-Id", "CW_CLIENT_ID", allow_env=allow_env)
     region = _pick(h, "X-CW-Region", "CW_REGION", allow_env=allow_env)
     host = _pick(h, "X-CW-Host", "CW_HOST", allow_env=allow_env)
+
+    # A clientId is integration identity, not an access credential — it is
+    # useless without valid keys. The server-level default is therefore
+    # deliberately exempt from the HTTP fail-closed rule, so self-service
+    # clients never have to register their own clientId.
+    if not client_id:
+        client_id = os.getenv("CW_DEFAULT_CLIENT_ID")
 
     missing = [
         name
@@ -193,13 +228,14 @@ def get_credentials() -> CWCredentials:
             + ". Supply an Authorization: Bearer token (hosted), X-CW-* request "
             "headers (custom agents), or CW_* env vars (local stdio)."
             + hint
+            + " New here? Call the get_started tool to set up a connection."
         )
 
-    return CWCredentials(
+    return _check_blocked(CWCredentials(
         company_id=company,  # type: ignore[arg-type]
         public_key=public,  # type: ignore[arg-type]
         private_key=private,  # type: ignore[arg-type]
         client_id=client_id,  # type: ignore[arg-type]
         region=region,
         host=host,
-    )
+    ))

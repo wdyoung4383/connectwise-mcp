@@ -17,3 +17,20 @@ services:
         scope: RUN_TIME
         type: SECRET
         value: "REPLACE_IN_DO_CONSOLE"
+      - key: CW_DEFAULT_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+        value: "REPLACE_IN_DO_CONSOLE"
+      - key: CW_BLOCKED_COMPANY_IDS
+        scope: RUN_TIME
+        value: ""
+      - key: CW_NOTIFY_TENANT
+        scope: RUN_TIME
+        type: SECRET
+        value: "REPLACE_IN_DO_CONSOLE"
+      - key: CW_NOTIFY_COMPANY
+        scope: RUN_TIME
+        value: ""
+      - key: CW_NOTIFY_BOARD
+        scope: RUN_TIME
+        value: "Service Desk"
