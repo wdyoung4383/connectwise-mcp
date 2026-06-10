@@ -276,23 +276,16 @@ def _contact_body(
     if title:
         body["title"] = title
     comm: list[dict[str, Any]] = []
+    # `communicationType` is the portable category enum; a `type` name
+    # reference is instance-specific (e.g. "Email - Work") so we omit it and
+    # let CW assign the instance's default type for the category.
     if email:
         comm.append(
-            {
-                "type": {"name": "Email"},
-                "value": email,
-                "defaultFlag": True,
-                "communicationType": "Email",
-            }
+            {"value": email, "defaultFlag": True, "communicationType": "Email"}
         )
     if phone:
         comm.append(
-            {
-                "type": {"name": "Phone"},
-                "value": phone,
-                "defaultFlag": True,
-                "communicationType": "Phone",
-            }
+            {"value": phone, "defaultFlag": True, "communicationType": "Phone"}
         )
     if comm:
         body["communicationItems"] = comm
@@ -358,8 +351,10 @@ def register(mcp) -> None:
         Charge target: pass exactly one of ticket_id (service ticket) or
         company (name/identifier). time_start is ISO UTC
         (YYYY-MM-DDTHH:MM:SSZ); default is now minus `hours`. member is a
-        member identifier; default is the API member. billable maps to
-        Billable/DoNotBill; omit for the work-type default.
+        member identifier (e.g. "WYoung"); when omitted ConnectWise charges
+        the API member, which fails on instances where that member is API-only
+        — pass a real member identifier if you get a Security error. billable
+        maps to Billable/DoNotBill; omit for the work-type default.
         """
         if (ticket_id is None) == (company is None):
             return {

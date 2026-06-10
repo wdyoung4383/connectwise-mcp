@@ -113,8 +113,9 @@ Tool signatures (required unless marked optional):
    - `last_name: str | None`
    - `company: str | None` — name or identifier, resolved
    - `email: str | None`, `phone: str | None` — wrapped as
-     `communicationItems` with `type {"name": "Email"|"Phone"}` and
-     `defaultFlag: true`
+     `communicationItems` with `communicationType "Email"|"Phone"` and
+     `defaultFlag: true` (no `type` name reference — those are
+     instance-specific; verified against the live API)
    - `title: str | None`
 
 ### 3. `server.py` and docs

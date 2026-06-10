@@ -252,18 +252,8 @@ def test_contact_body():
     assert full["company"] == {"id": 19332}
     assert full["title"] == "CTO"
     assert full["communicationItems"] == [
-        {
-            "type": {"name": "Email"},
-            "value": "jane@acme.test",
-            "defaultFlag": True,
-            "communicationType": "Email",
-        },
-        {
-            "type": {"name": "Phone"},
-            "value": "555-0101",
-            "defaultFlag": True,
-            "communicationType": "Phone",
-        },
+        {"value": "jane@acme.test", "defaultFlag": True, "communicationType": "Email"},
+        {"value": "555-0101", "defaultFlag": True, "communicationType": "Phone"},
     ]
 
 
