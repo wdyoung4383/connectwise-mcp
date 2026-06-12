@@ -39,10 +39,15 @@ def test_config_snippet_contains_headers():
     cfg = json.loads(snip)
     args = cfg["mcpServers"]["connectwise"]["args"]
     joined = " ".join(args)
-    assert "X-CW-Company-Id: acme" in joined
-    assert "X-CW-Public-Key: pub" in joined
-    assert "X-CW-Private-Key: priv" in joined
-    assert "X-CW-Region: na" in joined
+    # values must be colon-joined with NO space: some Claude Desktop builds
+    # on Windows split npx args on spaces (regression: client onboarding)
+    assert "X-CW-Company-Id:acme" in joined
+    assert "X-CW-Public-Key:pub" in joined
+    assert "X-CW-Private-Key:priv" in joined
+    assert "X-CW-Region:na" in joined
+    for a in args:
+        if a.startswith("X-CW-"):
+            assert " " not in a
     assert "mcp-remote" in args[0]
 
 

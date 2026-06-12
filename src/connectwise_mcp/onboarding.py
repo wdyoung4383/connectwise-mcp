@@ -67,13 +67,17 @@ def _build_config_snippet(
         "mcpServers": {
             "connectwise": {
                 "command": "npx",
+                # No space after the colon: some Claude Desktop builds on
+                # Windows split npx args on spaces, which crashes mcp-remote
+                # at startup. Colon-only values parse identically and work
+                # everywhere.
                 "args": [
                     "mcp-remote",
                     GATEWAY_URL,
-                    "--header", f"X-CW-Company-Id: {company_id}",
-                    "--header", f"X-CW-Public-Key: {public_key}",
-                    "--header", f"X-CW-Private-Key: {private_key}",
-                    "--header", f"X-CW-Region: {region}",
+                    "--header", f"X-CW-Company-Id:{company_id}",
+                    "--header", f"X-CW-Public-Key:{public_key}",
+                    "--header", f"X-CW-Private-Key:{private_key}",
+                    "--header", f"X-CW-Region:{region}",
                 ],
             }
         }
