@@ -50,10 +50,41 @@ async def test_single_object_passthrough_and_info_kept_on_request():
     assert full["_info"] == {"u": "x"}
 
 
-async def test_out_of_scope_path_rejected():
-    async with make_client(lambda r: httpx.Response(200, json=[])) as client:
-        with pytest.raises(ExecutionError, match="not in this server's read scope"):
-            await cw_get(client, CATALOG, "/system/audittrail/nonexistent")
+async def test_path_outside_the_catalog_is_still_executed():
+    """The catalog documents, it does not gate: unknown paths go through.
+
+    The bundled spec trails the live ConnectWise release, so refusing paths it
+    does not list would block endpoints that exist.
+    """
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.path)
+        return httpx.Response(200, json=[])
+
+    async with make_client(handler) as client:
+        out = await cw_get(client, CATALOG, "/service/somethingBrandNew")
+    assert seen == ["/api/service/somethingBrandNew"]
+    assert out["items"] == []
+
+
+async def test_404_on_uncatalogued_path_hints_at_the_spec_version():
+    def handler(request):
+        return httpx.Response(404, text="nope")
+
+    async with make_client(handler) as client:
+        with pytest.raises(ExecutionError, match="not in the bundled spec"):
+            await cw_get(client, CATALOG, "/service/typoTickets")
+
+
+async def test_404_on_known_path_does_not_add_the_hint():
+    def handler(request):
+        return httpx.Response(404, text="nope")
+
+    async with make_client(handler) as client:
+        with pytest.raises(ExecutionError) as exc:
+            await cw_get(client, CATALOG, "/service/tickets/{id}", path_params={"id": 1})
+    assert "not in the bundled spec" not in str(exc.value)
 
 
 async def test_error_classification_400():
