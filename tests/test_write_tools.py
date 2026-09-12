@@ -341,13 +341,17 @@ def served(monkeypatch):
             )
         return httpx.Response(200, json=[])
 
+    # Credential resolution lives in curated.run_write, which both the curated
+    # create tools and the generic cw_call gateway share.
+    from connectwise_mcp import curated as cw_curated
+
     monkeypatch.setattr(
-        cw_writes,
+        cw_curated,
         "get_credentials",
         lambda: CWCredentials("co", "pub", "priv", "cid"),
     )
     monkeypatch.setattr(
-        cw_writes,
+        cw_curated,
         "make_client",
         lambda creds: httpx.AsyncClient(
             transport=httpx.MockTransport(handler), base_url="https://cw.test/api"
@@ -468,3 +472,103 @@ async def test_create_company_happy_path(served):
     assert path == "/api/company/companies"
     assert body == {"name": "Acme Inc", "identifier": "ACME", "city": "Springfield", "site": {"name": "Main"}}
     assert result.data["id"] == 999
+
+
+# --------------------------------------------------------------- cw_call tool
+
+
+def _gateway(monkeypatch, handler):
+    """Point the shared write runner at a mock transport."""
+    from connectwise_mcp import curated as cw_curated
+
+    monkeypatch.setattr(
+        cw_curated, "get_credentials",
+        lambda: CWCredentials("co", "pub", "priv", "cid"),
+    )
+    monkeypatch.setattr(
+        cw_curated, "make_client",
+        lambda creds: httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://cw.test/api"
+        ),
+    )
+
+
+async def _call(tool, args):
+    from fastmcp import Client
+    from connectwise_mcp.server import mcp
+
+    async with Client(mcp) as client:
+        return await client.call_tool(tool, args)
+
+
+async def test_cw_call_posts_to_a_path_no_curated_tool_covers(monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append((request.method, request.url.path, json.loads(request.content)))
+        return httpx.Response(201, json={"id": 77, "_info": {"x": 1}})
+
+    _gateway(monkeypatch, handler)
+    result = await _call(
+        "cw_call",
+        {
+            "method": "POST",
+            "path": "/finance/agreements",
+            "body": {"name": "Managed Services", "company": {"id": 19332}},
+        },
+    )
+    assert seen == [
+        ("POST", "/api/finance/agreements",
+         {"name": "Managed Services", "company": {"id": 19332}}),
+    ]
+    assert result.data == {"id": 77}
+
+
+async def test_cw_call_patches_with_a_json_patch_array(monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append((request.method, request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"id": 5, "status": {"name": "Closed"}})
+
+    _gateway(monkeypatch, handler)
+    ops = [{"op": "replace", "path": "/status/id", "value": 12}]
+    result = await _call(
+        "cw_call",
+        {
+            "method": "PATCH",
+            "path": "/service/tickets/{id}",
+            "path_params": {"id": 5},
+            "body": ops,
+        },
+    )
+    assert seen == [("PATCH", "/api/service/tickets/5", ops)]
+    assert result.data == {"id": 5, "status": {"name": "Closed"}}
+
+
+async def test_cw_call_refuses_delete_without_touching_the_network(monkeypatch):
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(204)
+
+    _gateway(monkeypatch, handler)
+    result = await _call(
+        "cw_call",
+        {"method": "DELETE", "path": "/service/tickets/{id}", "path_params": {"id": 5}},
+    )
+    assert calls["n"] == 0
+    assert "DELETE is not available" in result.data["error"]
+
+
+async def test_cw_call_surfaces_validation_errors_as_data(monkeypatch):
+    def handler(request):
+        return httpx.Response(400, text='{"errors":[{"message":"board is required"}]}')
+
+    _gateway(monkeypatch, handler)
+    result = await _call(
+        "cw_call",
+        {"method": "POST", "path": "/service/tickets", "body": {"summary": "x"}},
+    )
+    assert "board is required" in result.data["error"]

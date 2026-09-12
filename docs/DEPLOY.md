@@ -176,6 +176,7 @@ gateway with no credentials and call two tools:
 | `CW_NOTIFY_TENANT` | SECRET | A Bearer token that **must exist as a key in `CW_TENANTS`**. The credentials behind that token are used to file the onboarding heads-up ticket. Leave blank to disable notifications. |
 | `CW_NOTIFY_COMPANY` | plain | The `identifier` of the company in your ConnectWise instance the heads-up ticket is filed against. |
 | `CW_NOTIFY_BOARD` | plain | The service board name the heads-up ticket is filed on (default: `Service Desk`). |
+| `CW_AUDIT_BODIES` | plain | Set to `1` to include request bodies in the write audit log. Off by default: bodies carry customer data. With PATCH and PUT enabled this log is the only record of what an agent changed. |
 
 Set `CW_DEFAULT_CLIENT_ID` and `CW_NOTIFY_TENANT` in the DO console the same
 way you set `CW_TENANTS` (Settings → server component → Environment
@@ -191,5 +192,6 @@ Variables). `CW_BLOCKED_COMPANY_IDS`, `CW_NOTIFY_COMPANY`, and
 |-------|--------|
 | **TLS** | Terminated by App Platform; all traffic to `/mcp` and `/health` is HTTPS. |
 | **Auth** | Bearer token looked up in `CW_TENANTS`. `CW_*` env-var credential fallback is **disabled** for HTTP requests by design — only tenant tokens or `X-CW-*` headers are accepted. |
-| **Write scope** | Writes are limited to five allowlisted POST paths in `writer.py` (ticket, time entry, ticket note, company, contact). There is no update/delete path and no generic write gateway. |
+| **Write scope** | `cw_call` reaches every POST/PATCH/PUT in the catalog; there is no per-path allowlist. DELETE is excluded by construction (absent from `scope.INCLUDED_METHODS` and `writer.WRITE_METHODS`). PUT replaces whole records, so a partial body clears omitted fields. `/system/` writes (members, security roles, API keys, callbacks) are in scope. Scope the ConnectWise API member's security role accordingly: it is the only remaining control. |
+| **Write auditing** | Actor, verb, path and resulting id go to the `connectwise_mcp.audit` logger on every write. Request bodies are omitted unless `CW_AUDIT_BODIES=1`, since they carry customer data. |
 | **Secret hygiene** | Real credentials live only in the DO secret store, never in the repo or build artifacts. |

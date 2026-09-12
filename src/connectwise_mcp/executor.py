@@ -1,8 +1,10 @@
-"""Executes GET calls against ConnectWise. Read-only by construction.
+"""Executes GET calls against ConnectWise.
 
-Only GET is implemented here. There is intentionally no create/update/delete
-path, so the read-only guarantee is enforced by the absence of code, not by a
-flag that could be flipped.
+Only GET is implemented here; writes live in writer.py. The catalog passed in
+is documentation, not a gate: any path the caller names is executed, because
+the bundled spec trails the live ConnectWise release and refusing unknown paths
+would block endpoints that exist. The catalog is still consulted on a 404, to
+tell "wrong id" apart from "path not in this spec version".
 """
 
 from __future__ import annotations
@@ -123,13 +125,6 @@ async def cw_get(
     responses are returned as-is. ``_info`` metadata is stripped unless
     ``include_info`` is set.
     """
-    ep = catalog.by_path(path)
-    if ep is None:
-        raise ExecutionError(
-            f"Path {path!r} is not in this server's read scope. "
-            "Use search_endpoints to find a valid path."
-        )
-
     url = _fill_path(path, path_params)
 
     ps = page_size if page_size is not None else DEFAULT_PAGE_SIZE
@@ -155,7 +150,14 @@ async def cw_get(
 
     resp = await _get_with_retries(client, url, query)
     if resp.status_code >= 400:
-        raise ExecutionError(_classify_error(resp.status_code, resp.text))
+        detail = _classify_error(resp.status_code, resp.text)
+        if resp.status_code == 404 and catalog.by_path(path) is None:
+            detail += (
+                f" (Note: {path!r} is not in the bundled spec "
+                f"v{catalog.spec_version}, so it may be misspelled, or newer "
+                "than the bundled catalog. Try search_endpoints.)"
+            )
+        raise ExecutionError(detail)
 
     try:
         data = resp.json()

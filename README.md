@@ -1,22 +1,24 @@
 # ConnectWise PSA MCP Server
 
 A [FastMCP](https://gofastmcp.com) server that exposes **ConnectWise Manage
-(PSA)** as a gateway for AI agents: catalog-wide reads plus five curated
-create actions.
+(PSA)** as a gateway for AI agents: the full documented API surface, every verb
+except DELETE.
 
-## Why a gateway, not 300 tools
+## Why a gateway, not 3,000 tools
 
-The ConnectWise API has thousands of operations; the in-scope read subset alone
-is **324 GET endpoints** across 71 categories. Exposing one tool per endpoint
-would overwhelm any LLM client. Instead the OpenAPI spec is loaded as a runtime
-**catalog**, with gateway tools in front of it, plus a few curated shortcuts:
+The catalog covers **2,780 operations across 1,832 paths** (GET 1,725, POST 399,
+PATCH 329, PUT 327). Exposing one tool per operation would overwhelm any LLM
+client. Instead the OpenAPI spec is loaded as a runtime **catalog**, with a
+handful of gateway tools in front of it, plus curated shortcuts for the common
+asks:
 
 | Tool | Purpose |
 |------|---------|
 | `list_modules` | Orientation: modules + endpoint counts |
 | `search_endpoints` | Find a GET endpoint by keyword |
 | `describe_endpoint` | See an endpoint's params + response shape |
-| `cw_get` | Execute any in-scope GET (paging, `conditions` filtering, `_info` stripping) |
+| `cw_get` | Execute any GET (paging, `conditions` filtering, `_info` stripping) |
+| `cw_call` | Execute any POST / PATCH / PUT |
 | `search_tickets` / `get_ticket` | Service tickets without conditions syntax |
 | `find_company` | Companies by name/identifier |
 | `list_agreements` | Finance agreements, optionally per company |
@@ -25,10 +27,37 @@ would overwhelm any LLM client. Instead the OpenAPI spec is loaded as a runtime
 | `create_time_entry` | Log time against a ticket or company |
 | `create_company` / `create_contact` | Create a company / contact |
 
-**Write scope by construction:** reads cover the whole GET catalog; writes
-are limited to five allowlisted POST paths in `writer.py` (ticket, time
-entry, ticket note, company, contact). There is no update/delete code path,
-and no generic write gateway.
+### Write scope
+
+Reads and writes both cover the whole catalog. `cw_call` will POST, PATCH or
+PUT to any path; there is no per-path allowlist. The curated create tools are
+convenience wrappers over the same dispatcher, not the boundary.
+
+**DELETE is the one exclusion, and it is excluded by construction.** ConnectWise
+deletes are not recoverable through the API, so the verb is absent from both the
+catalog (`scope.INCLUDED_METHODS`) and the dispatcher (`writer.WRITE_METHODS`).
+There is no code path that issues one.
+
+Three things to understand before pointing this at a customer's PSA:
+
+- **PUT is destructive.** It replaces the whole record, so a PUT carrying a
+  partial body clears every field omitted from it. Prefer PATCH, which takes a
+  JSON Patch array and changes only the fields you name.
+- **`/system/` is in scope.** That is 714 operations covering members, security
+  roles, API keys and callbacks. A callback registered by an agent is an
+  outbound data channel that outlives the session.
+- **Writes are immediate.** The API member's own ConnectWise security role is
+  the only other control. Scope that role to what the agent actually needs
+  rather than relying on this server to be narrow, because it no longer is.
+
+To narrow the surface again, edit `INCLUDED_METHODS` / `SELECTED_CATEGORIES` in
+[`scope.py`](src/connectwise_mcp/scope.py) and `WRITE_METHODS` in
+[`writer.py`](src/connectwise_mcp/writer.py), then regenerate the catalog.
+
+**Write auditing.** Every write logs actor, verb, path and resulting id to the
+`connectwise_mcp.audit` logger. Request bodies are omitted by default because
+they carry customer data; set `CW_AUDIT_BODIES=1` to include them, which is
+worth doing if the runtime log destination is an acceptable home for that data.
 
 ## Credentials (resolved per request, in this order)
 
@@ -123,10 +152,16 @@ python scripts/live_smoke.py    # live read checks; needs CW_* env vars
 
 ## Changing scope
 
-Only `GET` operations under the categories in
-[`scope.py`](src/connectwise_mcp/scope.py) are exposed. To change scope, edit
-that set, download the full spec from https://developer.connectwise.com, and
-regenerate:
+The catalog is **documentation, not access control**: `cw_get` and `cw_call`
+execute whatever path they are given, whether or not it appears in the catalog.
+That is deliberate, because the bundled spec trails the live ConnectWise release
+and refusing unknown paths would block endpoints that exist. Scope therefore
+decides what `search_endpoints` and `describe_endpoint` can *find*; the verb
+allowlist in `writer.WRITE_METHODS` is what decides what can be *executed*.
+
+To change what the catalog documents, edit `SELECTED_CATEGORIES` /
+`INCLUDED_METHODS` in [`scope.py`](src/connectwise_mcp/scope.py), download the
+full spec from https://developer.connectwise.com, and regenerate:
 
 ```bash
 python scripts/generate_catalog.py path/to/All.json

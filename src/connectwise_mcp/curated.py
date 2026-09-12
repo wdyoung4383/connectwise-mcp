@@ -32,6 +32,24 @@ async def run_get(path: str, **kwargs: Any) -> Any:
         return {"error": str(e)}
 
 
+async def run_write(fn) -> Any:
+    """Resolve credentials, open a client, run ``fn(client, actor)``, map errors.
+
+    ``actor`` is the tenant's ConnectWise company id, used for write auditing.
+    Shared by the curated create tools and the generic cw_call gateway so
+    credential resolution lives in exactly one place.
+    """
+    try:
+        creds = get_credentials()
+    except MissingCredentials as e:
+        return {"error": str(e)}
+    try:
+        async with make_client(creds) as client:
+            return await fn(client, creds.company_id)
+    except ExecutionError as e:
+        return {"error": str(e)}
+
+
 def _utc_days_ago(days: int) -> str:
     dt = datetime.now(timezone.utc) - timedelta(days=days)
     return "[" + dt.strftime("%Y-%m-%dT%H:%M:%SZ") + "]"

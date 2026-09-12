@@ -12,31 +12,15 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from .auth import MissingCredentials, get_credentials
 from .catalog import load_catalog
-from .client import make_client
 from .conditions import join_and, quote
+from .curated import run_write as _run_write
 from .executor import ExecutionError, cw_get
 from .writer import cw_post
 
 
 class ResolutionError(ExecutionError):
     """A friendly input could not be resolved to exactly one record."""
-
-
-async def _run_write(fn) -> Any:
-    """Resolve credentials, open a client, run ``fn(client, actor)``, map
-    errors. ``actor`` is the tenant's ConnectWise company id, used for write
-    audit logging."""
-    try:
-        creds = get_credentials()
-    except MissingCredentials as e:
-        return {"error": str(e)}
-    try:
-        async with make_client(creds) as client:
-            return await fn(client, creds.company_id)
-    except ExecutionError as e:
-        return {"error": str(e)}
 
 
 async def _get_items(client, path: str, **kwargs: Any) -> list[dict]:
